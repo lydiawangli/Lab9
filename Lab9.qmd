@@ -1,0 +1,123 @@
+---
+title: "Lab 9"
+author: Lydia Wang
+format: 
+  html:
+    embed-resources: true
+---
+
+
+```{r}
+#Step 1:
+library(parallel)
+library(microbenchmark)
+
+fun1 <- function(n = 100, k = 4, lambda = 4) {
+  x <- NULL
+  
+  for (i in 1:n){
+    x <- rbind(x, rpois(k, lambda))    
+  }
+  
+  return(x)
+}
+
+fun1alt <- function(n = 100, k = 4, lambda = 4) {
+  matrix(rpois(n * k, lambda), n, k)
+}
+
+data_fun1 <- fun1()
+data_fun1alt <- fun1alt()
+
+mean_fun1 <- mean(data_fun1)
+median_fun1 <- median(data_fun1)
+sd_fun1 <- sd(data_fun1)
+
+mean_fun1alt <- mean(data_fun1alt)
+median_fun1alt <- median(data_fun1alt)
+sd_fun1alt <- sd(data_fun1alt)
+
+summary_table <- data.frame(
+  Statistic = c("Mean", "Median", "Standard Deviation"),
+  fun1 = c(mean_fun1, median_fun1, sd_fun1),
+  fun1alt = c(mean_fun1alt, median_fun1alt, sd_fun1alt)
+)
+
+print(summary_table)
+
+microbenchmark::microbenchmark(
+  fun1(),
+  fun1alt()
+)
+```
+
+```{r}
+#Step 2:
+set.seed(1234)
+x <- matrix(rnorm(1e4), nrow=10)
+
+fun2 <- function(x) {
+  apply(x, 2, max)
+}
+
+fun2alt <- function(x) {
+  apply(x, 2, max)
+}
+
+identical(fun2(x), fun2alt(x))
+
+microbenchmark::microbenchmark(
+  fun2(x),
+  fun2alt(x)
+)
+```
+
+```{r}
+#Step 3:
+library(parallel)
+
+my_stat <- function(d) {
+  coef(lm(y ~ x, data = d))
+}
+
+set.seed(1)
+n <- 500
+R <- 1e4
+
+x <- cbind(rnorm(n))
+y <- x * 5 + rnorm(n)
+
+dat <- data.frame(x = x, y = y)
+
+saveRDS(dat, "dat.rds")
+
+dat <- readRDS("dat.rds")
+
+my_boot <- function(R, ncpus = 1L) {
+  cl <- makeCluster(min(ncpus, detectCores()))
+  
+  clusterExport(cl, c("dat", "my_stat", "n"))
+
+  clusterEvalQ(cl, library(parallel))
+
+  ans <- parLapply(cl, seq_len(R), function(i) {
+    idx <- matrix(sample.int(n, n * R, TRUE), nrow = n, ncol = R)
+    stat <- my_stat
+    stat(dat[idx[, i], , drop = FALSE])
+  })
+
+  stopCluster(cl)
+
+  ans <- do.call(rbind, ans)
+
+  return(ans)
+}
+
+ans0 <- confint(lm(y ~ x))
+ans1 <- my_boot(R = R, ncpus = 2L)
+
+t(apply(ans1, 2, quantile, c(0.025, 0.975)))
+
+ans0
+
+```
